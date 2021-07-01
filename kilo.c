@@ -1,25 +1,10 @@
 /*** includes ***/
 
-#define _DEFAULT_SOURCE
-#define _BSD_SOURCE
-#define _GNU_SOURCE
-
-#include <ctype.h>
-#include <errno.h>
-#include <fcntl.h>
-#include <stdio.h>
-#include <stdarg.h>
-#include <stdlib.h>
-#include <string.h>
-#include <sys/ioctl.h>
-#include <sys/types.h>
-#include <termios.h>
-#include <time.h>
-#include <unistd.h>
+#include "kilo.h"
 
 /*** defines ***/
 
-#define KILO_VERSION "0.0.1"
+#define KILO_VERSION "0.0.3"
 #define CTRL_KEY(k) ((k) & 0x1F)
 #define SHIFT_KEY(k) ((k) & 0x400)
 #define ABUF_INIT {NULL, 0}
@@ -128,20 +113,19 @@ void abFree(struct abuf * ab) {
 
 struct editorConfig E;
 
-/*** filetypes ***/
-
-char * C_HL_extensions[] = { ".c", ".h", ".cpp", NULL };
-char * C_HL_keywords[] = {
-	"switch", "if", "while", "for", "break", "continue", "return", "else", "struct", "union", "typedef", "static", "enum", "class", "case",
-	"int|", "long|", "double|", "float|", "char|", "unsigned|", "signed|", "void|"
-};
-
 struct editorSyntax HLDB[] = {
 	{
 		"c",
 		C_HL_extensions,
 		C_HL_keywords,
 		"//", "/*", "*/",
+		HL_HIGHLIGHT_NUMBERS | HL_HIGHLIGHT_STRINGS
+	},
+	{
+		"python",
+		PY_HL_extensions,
+		PY_HL_keywords,
+		"#", "'''", "'''",
 		HL_HIGHLIGHT_NUMBERS | HL_HIGHLIGHT_STRINGS
 	},
 };
