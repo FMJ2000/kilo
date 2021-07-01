@@ -24,14 +24,20 @@ to open an existing file:
 shortcuts:
 
 ```
-Ctrl+S - save
+Ctrl+S - save file
+Ctrl+O - open file
 Ctrl+Q - quit
 Ctrl+F - find
+Shift+Tab - switch between files
 Ctrl+C - copy
 Ctrl+V - paste
 Ctrl+D - duplicate line
 Ctrl+K - delete line
 ```
+
+### version 0.0.4
+
+- added multiple file support. Press `Ctrl+N` or `Ctrl+O` to open a new or existing file in the same workspace. Switch between files with `Shift+Tab`.
 
 ### version 0.0.3
 

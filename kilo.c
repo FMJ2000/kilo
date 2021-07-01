@@ -4,7 +4,7 @@
 
 /*** defines ***/
 
-#define KILO_VERSION "0.0.3"
+#define KILO_VERSION "0.0.4"
 #define CTRL_KEY(k) ((k) & 0x1F)
 #define SHIFT_KEY(k) ((k) & 0x400)
 #define ABUF_INIT {NULL, 0}
@@ -22,6 +22,7 @@
 void editorSetStatusMessage(const char * fmt, ...);
 void editorRefreshScreen();
 char * editorPrompt(char * prompt, void (* callback)(char *, int));
+void editorNewFile();
 
 /*** data ***/
 
@@ -39,7 +40,8 @@ enum editorKey {
 	SHIFT_ARROW_LEFT = 0x400,
 	SHIFT_ARROW_RIGHT,
 	SHIFT_ARROW_UP,
-	SHIFT_ARROW_DOWN
+	SHIFT_ARROW_DOWN,
+	SHIFT_TAB
 };
 
 enum editorHighlight {
@@ -77,6 +79,7 @@ typedef struct erow {
 } erow;
 
 typedef struct efile {
+	int index;
 	int cx, cy;
 	int rx;
 	int rowoff;
@@ -232,6 +235,7 @@ int editorReadKey() {
 					case 'D': return ARROW_LEFT;
 					case 'H': return HOME_KEY;
 					case 'F': return END_KEY;
+					case 'Z': return SHIFT_TAB;
 				}
 			}
 		} else if (seq[0] == 'O') {
@@ -517,6 +521,17 @@ void editorFreeRow(erow * row) {
 	free(row->hl);
 }
 
+void editorFreeFile(efile * F) {
+	int index = F->index;
+	for (int i = 0; i < F->numrows; i++) editorFreeRow(&F->row[i]);
+	if (index >= 0 && index < E.numfiles)
+		memmove(&E.file[index], &E.file[index + 1], sizeof(efile) * (E.numfiles - index - 1));
+	for (int i = index; i < E.numfiles - 1; i++) E.file[i].index--;
+	E.numfiles--;
+	if (E.numfiles > 0) E.currentfile = 0;
+	else editorNewFile();
+}
+
 void editorDelRow(int at) {
 	efile * F = &E.file[E.currentfile];
 	if (at < 0 || at >= F->numrows) return;
@@ -702,6 +717,7 @@ char * editorRowsToString(int * buflen) {
 void editorNewFile() {
 	efile F;
 	
+	F.index = E.numfiles;
 	F.cx = 0;
 	F.cy = 0;
 	F.rx = 0;
@@ -721,14 +737,16 @@ void editorNewFile() {
 }
 
 void editorOpen(char * filename) {
+	FILE * fp = fopen(filename, "r");
+	if (!fp) {
+		editorSetStatusMessage("Could not open file %s", filename); // die("fopen");
+		return;
+	}
 	editorNewFile();
 	efile * F = &E.file[E.currentfile];
 	F->filename = strdup(filename);
 	editorSelectSyntaxHighlight();
-
-	FILE * fp = fopen(filename, "r");
-	if (!fp) editorSetStatusMessage("Could not open file %s", filename); // die("fopen");
-
+	
 	char * line = NULL;
 	size_t linecap = 0;
 	ssize_t linelen;
@@ -770,6 +788,10 @@ void editorSave() {
 	}
 	free(buf);
 	editorSetStatusMessage("Can't save! I/O error: %s", strerror(errno));
+}
+
+void editorNextFile() {
+	E.currentfile = (E.currentfile + 1) % E.numfiles;
 }
 
 /*** find ***/
@@ -955,15 +977,26 @@ void editorProcessKeypress() {
 				quit_times--;
 				return;
 			}
-			write(STDOUT_FILENO, "\x1b[2J", 4);
-			write(STDOUT_FILENO, "\x1b[H", 3);
-			exit(0);
+			if (E.numfiles == 1) {
+				write(STDOUT_FILENO, "\x1b[2J", 4);
+				write(STDOUT_FILENO, "\x1b[H", 3);
+				exit(0);
+			} else {
+				editorFreeFile(F); 
+			}
 			break;
 
 		case CTRL_KEY('s'):
 			editorSave();
 			break;
 		
+		case CTRL_KEY('o'):
+			{
+				char * filename = editorPrompt("Open file: %s", NULL);
+				editorOpen(filename);
+				break;
+			}
+				
 		case CTRL_KEY('f'):
 			editorFind();
 			break;
@@ -1021,6 +1054,10 @@ void editorProcessKeypress() {
 		case HOME_KEY:
 		case END_KEY:
 			editorMoveCursor(c);
+			break;
+
+		case SHIFT_TAB:
+			editorNextFile();
 			break;
 
 		default:
@@ -1129,7 +1166,7 @@ void editorDrawStatusBar(struct abuf * ab) {
 	efile * F = &E.file[E.currentfile];
 	abAppend(ab, "\x1b[7m", 4);
 	char status[80], rstatus[80];
-	int len = snprintf(status, sizeof(status), "%.20s - %d lines %s", F->filename ? F->filename : "[No Name]", F->numrows, F->dirty ? "(modified)" : "");
+	int len = snprintf(status, sizeof(status), "%.20s file (%d/%d) %s", F->filename ? F->filename : "[No Name]", E.currentfile + 1, E.numfiles, F->dirty ? "(modified)" : "");
 	int rlen = snprintf(rstatus, sizeof(rstatus), "%s | %d/%d", F->syntax ? F->syntax->filetype : "no ft", F->cy + 1, F->numrows);
 	if (len > E.screencols) len = E.screencols;
 	abAppend(ab, status, len);
