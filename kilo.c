@@ -21,6 +21,7 @@
 
 #define KILO_VERSION "0.0.1"
 #define CTRL_KEY(k) ((k) & 0x1F)
+#define SHIFT_KEY(k) ((k) & 0x400)
 #define ABUF_INIT {NULL, 0}
 #define KILO_TAB_STOP 4
 #define KILO_QUIT_TIMES 3
@@ -40,7 +41,7 @@ char * editorPrompt(char * prompt, void (* callback)(char *, int));
 
 enum editorKey {
 	BACKSPACE = 127,
-	ARROW_LEFT = 1000,
+	ARROW_LEFT = 0x200,
 	ARROW_RIGHT,
 	ARROW_UP,
 	ARROW_DOWN,
@@ -48,20 +49,24 @@ enum editorKey {
 	HOME_KEY,
 	END_KEY,
 	PAGE_UP,
-	PAGE_DOWN
+	PAGE_DOWN,
+	SHIFT_ARROW_LEFT = 0x400,
+	SHIFT_ARROW_RIGHT,
+	SHIFT_ARROW_UP,
+	SHIFT_ARROW_DOWN
 };
 
 enum editorHighlight {
 	HL_NORMAL = 0,
-	HL_SEL,
-	HL_UNSEL,
 	HL_COMMENT,
 	HL_MLCOMMENT,
 	HL_KEYWORD1,
 	HL_KEYWORD2,
 	HL_STRING,
 	HL_NUMBER,
-	HL_MATCH
+	HL_MATCH,
+	HL_SEL = 0,
+	HL_UNSEL = 1
 };
 
 struct editorSyntax {
@@ -95,6 +100,8 @@ struct editorConfig {
 	int numrows;
 	erow * row;
 	int dirty;
+	int selected;
+	char * clipboard;
 	char * filename;
 	char statusmsg[80];
 	time_t statusmsg_time;
@@ -141,7 +148,7 @@ struct editorSyntax HLDB[] = {
 
 /*** terminal ***/
 
-void die(const char *s) {
+void die(const char * s) {
 	write(STDOUT_FILENO, "\x1b[2J", 4);
 	write(STDOUT_FILENO, "\x1b[H", 3);
 
@@ -174,7 +181,7 @@ int editorReadKey() {
 	}
 
 	if (c == '\x1b') {
-		char seq[3];
+		char seq[5];
 		if (read(STDIN_FILENO, &seq[0], 1) != 1) return '\x1b';
 		if (read(STDIN_FILENO, &seq[1], 1) != 1) return '\x1b';
 		if (seq[0] == '[') {
@@ -189,6 +196,17 @@ int editorReadKey() {
 						case '6': return PAGE_DOWN;
 						case '7': return HOME_KEY;
 						case '8': return END_KEY;
+					}
+				} else if (seq[1] == '1' && seq[2] == ';') {
+					if (read(STDIN_FILENO, &seq[3], 1) != 1) return '\x1b';
+					if (read(STDIN_FILENO, &seq[4], 1) != 1) return '\x1b';
+					if (seq[3] == '2') {
+						switch (seq[4]) {
+							//case 'A': return SHIFT_ARROW_UP;
+							//case 'B': return SHIFT_ARROW_DOWN;
+							case 'C': return SHIFT_ARROW_RIGHT;
+							case 'D': return SHIFT_ARROW_LEFT;
+						}
 					}
 				}
 			} else {
@@ -248,6 +266,15 @@ int getWindowSize(int *rows, int * cols) {
 
 int is_separator(int c) {
 	return isspace(c) || c == '\0' || strchr(",.()+-/*=~%<>[];", c) != NULL;
+}
+
+void removeHighlight() {
+	for (int i = 0; i < E.numrows; i++) {
+		erow * row = &E.row[i];
+		row->sel = realloc(row->sel, row->rsize);
+		memset(row->sel, HL_UNSEL, row->rsize);
+	}
+	E.selected = 0;
 }
 
 void editorUpdateSyntax(erow *row) {
@@ -481,6 +508,7 @@ void editorDelRow(int at) {
 
 	E.numrows--;
 	E.dirty++;
+	if (E.selected) removeHighlight();
 }
 
 void editorRowInsertChar(erow * row, int at, int c) {
@@ -491,6 +519,7 @@ void editorRowInsertChar(erow * row, int at, int c) {
 	row->chars[at] = c;
 	editorUpdateRow(row);
 	E.dirty++;
+	if (E.selected) removeHighlight();
 }
 
 void editorRowAppendString(erow * row, char * s, size_t len) {
@@ -500,6 +529,7 @@ void editorRowAppendString(erow * row, char * s, size_t len) {
 	row->chars[row->size] = '\0';
 	editorUpdateRow(row);
 	E.dirty++;
+	if (E.selected) removeHighlight();
 }
 
 void editorRowDelChar(erow * row, int at) {
@@ -508,6 +538,7 @@ void editorRowDelChar(erow * row, int at) {
 	row->size--;
 	editorUpdateRow(row);
 	E.dirty++;
+	if (E.selected) removeHighlight();
 }
 
 /*** editor operations ***/
@@ -538,6 +569,51 @@ void editorInsertNewline() {
 	}
 	E.cy++;
 	E.cx = indent;
+}
+
+void editorCopyChars() {
+	if (!E.selected) return;
+	
+	if (E.clipboard) {
+		free(E.clipboard);
+		E.clipboard = NULL;
+	}
+	
+	int len = 1;
+	for (int i = 0; i < E.numrows; i++)
+		for (int j = 0; j < E.row[i].size; j++)
+			if (!E.row[i].sel[j]) len++;
+	
+	E.clipboard = malloc(len);
+	int index = 0;
+	for (int i = 0; i < E.numrows; i++) {
+		for (int j = 0; j < E.row[i].size; j++) {
+			if (!E.row[i].sel[j]) {
+				E.clipboard[index++] = E.row[i].chars[j];
+			}
+		}
+	}
+	E.clipboard[index] = '\0';
+	editorSetStatusMessage("Copied '%s' to clipboard", E.clipboard);
+}
+
+void editorPasteChars() {
+	if (E.clipboard == NULL) return;
+	
+	char * c = E.clipboard;
+	while (*c) editorInsertChar(*c++);
+}
+
+void editorDuplicateRow() {
+	if (E.cy == E.numrows) return;
+	erow * row = &E.row[E.cy];
+	editorInsertRow(E.cy + 1, row->chars, row->size);
+	E.cy++;
+}
+
+void editorDeleteRow() {
+	if (E.cy == E.numrows) return;
+	editorDelRow(E.cy);
 }
 
 void editorDelChar() {
@@ -736,31 +812,48 @@ char * editorPrompt(char * prompt, void (* callback)(char *, int)) {
 
 void editorMoveCursor(int key) {
 	erow *row = (E.cy >= E.numrows) ? NULL : &E.row[E.cy];
-
+	
+	/* highlighting */
+	if (SHIFT_KEY(key)) {
+		if (key == SHIFT_ARROW_RIGHT) row->sel[E.cx] = !row->sel[E.cx];
+		else if (SHIFT_ARROW_LEFT && E.cx > 0) row->sel[E.cx - 1] = !row->sel[E.cx - 1];
+		E.selected = 1;
+	} else removeHighlight();
+	
+	/* moving */
 	switch (key) {
 		case ARROW_LEFT:
+		case SHIFT_ARROW_LEFT:
 			if (E.cx != 0) E.cx--;
 			else if (E.cy > 0) {
 				E.cy--;
 				E.cx = E.row[E.cy].size;
 			}
 			break;
+			
 		case ARROW_RIGHT:
+		case SHIFT_ARROW_RIGHT:
 			if (row && E.cx < row->size) E.cx++;
 			else if (row && E.cx == row->size) {
 				E.cy++;
 				E.cx = 0;
 			}
 			break;
+			
 		case ARROW_UP:
+		case SHIFT_ARROW_UP:
 			if (E.cy != 0) E.cy--;
 			break;
+			
 		case ARROW_DOWN:
+		case SHIFT_ARROW_DOWN:
 			if (E.cy < E.numrows) E.cy++;
 			break;
+			
 		case HOME_KEY:
 			E.cx = 0;
 			break;
+			
 		case END_KEY:
 			if (E.cy < E.numrows)	E.cx = E.row[E.cy].size;
 			break;
@@ -798,7 +891,23 @@ void editorProcessKeypress() {
 		case CTRL_KEY('f'):
 			editorFind();
 			break;
-
+		
+		case CTRL_KEY('d'):
+			editorDuplicateRow();
+			break;
+		
+		case CTRL_KEY('k'):
+			editorDeleteRow();
+			break;
+			
+		case CTRL_KEY('c'):
+			editorCopyChars();
+			break;
+			
+		case CTRL_KEY('v'):
+			editorPasteChars();
+			break;
+		
 		case PAGE_UP:
 		case PAGE_DOWN:
 			{
@@ -829,6 +938,10 @@ void editorProcessKeypress() {
 		case ARROW_DOWN:
 		case ARROW_LEFT:
 		case ARROW_RIGHT:
+		case SHIFT_ARROW_UP:
+		case SHIFT_ARROW_DOWN:
+		case SHIFT_ARROW_LEFT:
+		case SHIFT_ARROW_RIGHT:
 		case HOME_KEY:
 		case END_KEY:
 			editorMoveCursor(c);
@@ -993,6 +1106,8 @@ void initEditor() {
 	E.numrows = 0;
 	E.row = NULL;
 	E.dirty = 0;
+	E.selected = 0;
+	E.clipboard = NULL;
 	E.filename = NULL;
 	E.statusmsg[0] = '\0';
 	E.statusmsg_time = 0;
