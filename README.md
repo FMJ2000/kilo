@@ -1,10 +1,13 @@
 # kilo
 kilo is a simple terminal text editor written in C
 
-clone the repository to a local directory and build the file.
+clone the repository to a local directory:
 
-`git pull https://github.com/FMJ2000/kilo.git`
-`make`
+```
+git pull https://github.com/FMJ2000/kilo.git`
+cd kilo
+make
+```
 
 to start a new file:
 
