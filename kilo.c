@@ -580,28 +580,47 @@ void editorCopyChars() {
 	}
 	
 	int len = 1;
+	int line = -1;
 	for (int i = 0; i < E.numrows; i++)
 		for (int j = 0; j < E.row[i].size; j++)
-			if (!E.row[i].sel[j]) len++;
+			if (!E.row[i].sel[j]) {
+				if (line < 0) line = i;
+				else if (line != i) {
+					line = i;
+					len++;
+				}
+				len++;
+			}
 	
 	E.clipboard = malloc(len);
 	int index = 0;
+	line = -1;
 	for (int i = 0; i < E.numrows; i++) {
 		for (int j = 0; j < E.row[i].size; j++) {
 			if (!E.row[i].sel[j]) {
+				if (line < 0) line = i;
+				else if (line != i) {
+					E.clipboard[index++] = '\n';
+					line = i;
+				}
 				E.clipboard[index++] = E.row[i].chars[j];
 			}
 		}
 	}
 	E.clipboard[index] = '\0';
-	editorSetStatusMessage("Copied '%s' to clipboard", E.clipboard);
+	editorSetStatusMessage("Copied item to clipboard");
 }
 
 void editorPasteChars() {
 	if (E.clipboard == NULL) return;
 	
 	char * c = E.clipboard;
-	while (*c) editorInsertChar(*c++);
+	while (*c) {
+		if (*c == '\n') {
+			editorInsertNewline();
+			c++;
+		} else editorInsertChar(*c++);
+	}
 }
 
 void editorDuplicateRow() {
@@ -814,7 +833,7 @@ void editorMoveCursor(int key) {
 	erow *row = (E.cy >= E.numrows) ? NULL : &E.row[E.cy];
 	
 	/* highlighting */
-	if (SHIFT_KEY(key)) {
+	if (SHIFT_KEY(key) && row->size > 0) {
 		if (key == SHIFT_ARROW_RIGHT) row->sel[E.cx] = !row->sel[E.cx];
 		else if (SHIFT_ARROW_LEFT && E.cx > 0) row->sel[E.cx - 1] = !row->sel[E.cx - 1];
 		E.selected = 1;
