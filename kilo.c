@@ -996,7 +996,11 @@ void editorProcessKeypress() {
 				editorOpen(filename);
 				break;
 			}
-				
+		
+		case CTRL_KEY('n'):
+			editorNewFile();
+			break;
+						
 		case CTRL_KEY('f'):
 			editorFind();
 			break;
@@ -1072,7 +1076,7 @@ void editorProcessKeypress() {
 
 void editorScroll() {
 	efile * F = &E.file[E.currentfile];
-	int numlen = (int) ceil(log10(F->numrows));	
+	int numlen = (int) ceil(log10(F->numrows + 1));	
 	F->rx = 0;
 	if (F->cy < F->numrows) {
 		F->rx = editorRowCxToRx(&F->row[F->cy], F->cx);
@@ -1094,7 +1098,7 @@ void editorScroll() {
 
 void editorDrawRows(struct abuf *ab) {
 	efile * F = &E.file[E.currentfile];	
-	int numlen = (int) ceil(log10(F->numrows));
+	int numlen = (int) ceil(log10(F->numrows + 1));
 	char * linenum = malloc(numlen + 1);
 	for (int y = 0; y < E.screenrows; y++) {
 		int filerow = y + F->rowoff;
@@ -1114,7 +1118,7 @@ void editorDrawRows(struct abuf *ab) {
 				abAppend(ab, "~", 1);
 			}
 		} else {
-			snprintf(linenum, numlen + 3, "%*d| ", numlen, filerow);
+			snprintf(linenum, numlen + 3, "%*d| ", numlen, filerow + 1);
 			abAppend(ab, linenum, numlen + 3);
 			int len = F->row[filerow].rsize - F->coloff;
 			if (len < 0) len = 0;
@@ -1202,7 +1206,7 @@ void editorRefreshScreen() {
 	editorDrawMessageBar(&ab);
 
 	char buf[32];
-	int numlen = (int) ceil(log10(F->numrows));
+	int numlen = (int) ceil(log10(F->numrows + 1));
 	snprintf(buf, sizeof(buf), "\x1b[%d;%dH", (F->cy - F->rowoff) + 1, (F->rx - F->coloff) + numlen + 3);
 	abAppend(&ab, buf, strlen(buf));
 	abAppend(&ab, "\x1b[?25h", 6);
