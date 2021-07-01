@@ -115,19 +115,33 @@ struct editorConfig E;
 
 struct editorSyntax HLDB[] = {
 	{
-		"c",
+		"C",
 		C_HL_extensions,
 		C_HL_keywords,
 		"//", "/*", "*/",
 		HL_HIGHLIGHT_NUMBERS | HL_HIGHLIGHT_STRINGS
 	},
 	{
-		"python",
+		"C++",
+		CPP_HL_extensions,
+		CPP_HL_keywords,
+		"//", "/*", "*/",
+		HL_HIGHLIGHT_NUMBERS | HL_HIGHLIGHT_STRINGS
+	},
+	{
+		"Python",
 		PY_HL_extensions,
 		PY_HL_keywords,
 		"#", "'''", "'''",
 		HL_HIGHLIGHT_NUMBERS | HL_HIGHLIGHT_STRINGS
 	},
+	{
+		"JavaScript",
+		JS_HL_extensions,
+		JS_HL_keywords,
+		"//", "/*", "*/",
+		HL_HIGHLIGHT_NUMBERS | HL_HIGHLIGHT_STRINGS
+	}
 };
 
 /*** terminal ***/
