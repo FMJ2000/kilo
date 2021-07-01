@@ -10,6 +10,7 @@
 #define ABUF_INIT {NULL, 0}
 #define KILO_TAB_STOP 4
 #define KILO_QUIT_TIMES 3
+#define TAB_REPLACE 31
 
 #define HL_HIGHLIGHT_NUMBERS (1<<0)
 #define HL_HIGHLIGHT_STRINGS (1<<1)
@@ -626,7 +627,7 @@ void editorCopyChars() {
 					E.clipboard[index++] = '\n';
 					line = i;
 				}
-				E.clipboard[index++] = F->row[i].chars[j];
+				E.clipboard[index++] = (F->row[i].chars[j] != '\t') ? F->row[i].render[j] : TAB_REPLACE;
 			}
 		}
 	}
@@ -635,14 +636,15 @@ void editorCopyChars() {
 }
 
 void editorPasteChars() {
+	efile * F = &E.file[E.currentfile];
 	if (E.clipboard == NULL) return;
 	
 	char * c = E.clipboard;
 	while (*c) {
-		if (*c == '\n') {
-			editorInsertNewline();
-			c++;
-		} else editorInsertChar(*c++);
+		if (*c == '\n') editorInsertRow(F->cy, "", 0);
+		else if (*c == TAB_REPLACE) editorInsertChar('\t');
+		else editorInsertChar(*c);
+		c++;
 	}
 }
 
@@ -887,8 +889,8 @@ void editorMoveCursor(int key) {
 	
 	/* highlighting */
 	if (SHIFT_KEY(key) && row->size > 0) {
-		if (key == SHIFT_ARROW_RIGHT) row->sel[F->cx] = !row->sel[F->cx];
-		else if (SHIFT_ARROW_LEFT && F->cx > 0) row->sel[F->cx - 1] = !row->sel[F->cx - 1];
+		if (key == SHIFT_ARROW_RIGHT) row->sel[F->rx] = !row->sel[F->rx];
+		else if (SHIFT_ARROW_LEFT && F->rx > 0) row->sel[F->rx - 1] = !row->sel[F->rx - 1];
 		F->selected = 1;
 	} else removeHighlight();
 	
@@ -1033,7 +1035,7 @@ void editorProcessKeypress() {
 
 void editorScroll() {
 	efile * F = &E.file[E.currentfile];
-	
+	int numlen = (int) ceil(log10(F->numrows));	
 	F->rx = 0;
 	if (F->cy < F->numrows) {
 		F->rx = editorRowCxToRx(&F->row[F->cy], F->cx);
@@ -1048,13 +1050,15 @@ void editorScroll() {
 	if (F->rx < F->coloff) {
 		F->coloff = F->rx;
 	}
-	if (F->rx >= F->coloff + E.screencols) {
-		F->coloff = F->rx - E.screencols + 1;
+	if (F->rx >= F->coloff + E.screencols - (numlen + 2)) {
+		F->coloff = F->rx - E.screencols + numlen + 3;
 	}
 }
 
 void editorDrawRows(struct abuf *ab) {
 	efile * F = &E.file[E.currentfile];	
+	int numlen = (int) ceil(log10(F->numrows));
+	char * linenum = malloc(numlen + 1);
 	for (int y = 0; y < E.screenrows; y++) {
 		int filerow = y + F->rowoff;
 		if (filerow >= F->numrows) {
@@ -1073,9 +1077,11 @@ void editorDrawRows(struct abuf *ab) {
 				abAppend(ab, "~", 1);
 			}
 		} else {
+			snprintf(linenum, numlen + 3, "%*d| ", numlen, filerow);
+			abAppend(ab, linenum, numlen + 3);
 			int len = F->row[filerow].rsize - F->coloff;
 			if (len < 0) len = 0;
-			if (len > E.screencols) len = E.screencols;
+			if (len > E.screencols - (numlen + 2)) len = E.screencols - (numlen + 2);
 			char * c = &F->row[filerow].render[F->coloff];
 			unsigned char * hl = &F->row[filerow].hl[F->coloff];
 			unsigned char * sel = &F->row[filerow].sel[F->coloff];
@@ -1159,7 +1165,8 @@ void editorRefreshScreen() {
 	editorDrawMessageBar(&ab);
 
 	char buf[32];
-	snprintf(buf, sizeof(buf), "\x1b[%d;%dH", (F->cy - F->rowoff) + 1, (F->rx - F->coloff) + 1);
+	int numlen = (int) ceil(log10(F->numrows));
+	snprintf(buf, sizeof(buf), "\x1b[%d;%dH", (F->cy - F->rowoff) + 1, (F->rx - F->coloff) + numlen + 3);
 	abAppend(&ab, buf, strlen(buf));
 	abAppend(&ab, "\x1b[?25h", 6);
 
