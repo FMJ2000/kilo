@@ -247,15 +247,15 @@ int getCursorPosition(int *rows, int * cols) {
 	return 0;
 }
 
-int getWindowSize(int *rows, int * cols) {
+int getWindowSize(int *rows, int * cols, int force) {
 	struct winsize ws;
 
 	if (ioctl(STDOUT_FILENO, TIOCGWINSZ, &ws) == -1 || ws.ws_col == 0) {
-		if (write(STDOUT_FILENO, "\x1b[999C\x1b[999B", 12) != 12) return -1;
+		if (!force || write(STDOUT_FILENO, "\x1b[999C\x1b[999B", 12) != 12) return -1;
 		return getCursorPosition(rows, cols);
 	} else {
 		*cols = ws.ws_col;
-		*rows = ws.ws_row;
+		*rows = ws.ws_row - 2;
 		return 0;
 	}
 }
@@ -1087,7 +1087,8 @@ void editorDrawMessageBar(struct abuf * ab) {
 
 void editorRefreshScreen() {
 	struct abuf ab = ABUF_INIT;
-
+	getWindowSize(&E.screenrows, &E.screencols, 0);
+	
 	editorScroll();
 	abAppend(&ab, "\x1b[?25l", 6);
 	abAppend(&ab, "\x1b[H", 3);
@@ -1130,8 +1131,7 @@ void initEditor() {
 	E.statusmsg_time = 0;
 	E.syntax = NULL;
 
-	if (getWindowSize(&E.screenrows, &E.screencols) == -1) die("getWindowSize");
-	E.screenrows -= 2;
+	if (getWindowSize(&E.screenrows, &E.screencols, 1) == -1) die("getWindowSize");
 }
 
 int main(int argc, char * argv[]) {
