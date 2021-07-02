@@ -50,7 +50,3 @@ Ctrl+K - delete line
 ### version 0.0.1
 
 - the base editor constructed by completing the tutorial at [snaptoken](https://viewsourcecode.org/snaptoken/kilo/index.html).
-
-### known bugs
-
-copying multiple lines is not working as expected, please just use single line copy and paste. Will be fixed in a future update.
